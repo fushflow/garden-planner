@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>תכנון תוצרת חורף</title>
+<style>
+  :root {
+    --bg: #f6f4ec; --card: #ffffff; --ink: #2b2a26; --muted: #6d6a60;
+    --line: #dcd8ca; --green: #3f7a3a; --green-soft: #e3efd9; --warn: #b4532a; --warn-soft: #f8e4d9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Assistant", "Rubik", "Segoe UI", Arial, sans-serif; font-size: 16px; line-height: 1.5; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  header h1 { margin: 8px 0 0; font-size: 28px; color: var(--green); }
+  header p { margin: 4px 0 16px; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  h2 { margin: 0 0 12px; font-size: 20px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  label { display: flex; flex-direction: column; font-size: 14px; color: var(--muted); gap: 4px; }
+  input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  input[type=number] { width: 80px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--green); background: var(--green); color: #fff; cursor: pointer; }
+  button.secondary { background: #fff; color: var(--green); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: right; vertical-align: middle; }
+  th { background: var(--green-soft); font-weight: 600; white-space: nowrap; }
+  tr.active td { background: #fbfdf8; }
+  td.qty input { width: 64px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--green-soft); color: var(--green); white-space: nowrap; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+  .stat { flex: 1 1 180px; border-radius: 10px; padding: 12px; background: var(--green-soft); }
+  .stat b { display: block; font-size: 24px; }
+  .stat.warn { background: var(--warn-soft); color: var(--warn); }
+  .empty { color: var(--muted); padding: 12px 0; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
+  #drawing svg { width: 100%; height: auto; display: block; }
+  .print-only { display: none; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 0 24px; }
+
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    body { background: #fff; font-size: 12px; }
+    main { padding: 0; max-width: none; }
+    .no-print, .actions, footer { display: none !important; }
+    .print-only { display: block; }
+    section { border: none; padding: 0; margin-bottom: 14px; break-inside: avoid-page; }
+    th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .stat, .swatch, svg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #choose { display: none; }
+    body.no-drawing #drawingSection { display: none; }
+    body:not(.new-beds) #compostSection { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="no-print">
+    <h1>🌱 תכנון תוצרת חורף לגינה הביתית</h1>
+    <p>בוחרים כמה רוצים לאכול מכל ירק בשבוע, והמחשבון אומר כמה לשתול, באיזו תדירות וכמה מקום בערוגה זה תופס.</p>
+  </header>
+
+  <section class="no-print">
+    <h2>1. פרטי הגינה</h2>
+    <div class="row">
+      <label>שם (יופיע ב-PDF)<input id="owner" type="text" placeholder="למשל: הגינה של דנה"></label>
+      <label>תחילת העונה<input id="seasonStart" type="date"></label>
+      <label>סוף העונה<input id="seasonEnd" type="date"></label>
+      <label>מספר ערוגות<input id="bedCount" type="number" min="1" max="30" step="1"></label>
+      <label>אורך ערוגה (מ׳)<input id="bedLength" type="number" min="0.5" max="50" step="0.1"></label>
+      <label>רוחב ערוגה (ס״מ)<input id="bedWidth" type="number" min="20" max="200" step="10"></label>
+    </div>
+    <p class="muted">המרווחים בין השתילים (לרוחב ולאורך) נשארים קבועים. בערוגה רחבה יותר נכנסות יותר שורות, ולכן צריך פחות אורך ערוגה לאותה כמות שתילים.</p>
+  </section>
+
+  <section id="choose">
+    <h2>2. כמה רוצים בשבוע?</h2>
+    <p class="muted">משאירים 0 בירקות שלא רוצים לגדל. היחידה כתובה ליד כל ירק.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ירק</th><th>סוג קטיף</th><th>כמות בשבוע</th><th>מרווחי שתילה (בערוגה של 80 ס״מ)</th><th>זמן עד קטיף ראשון</th></tr></thead>
+        <tbody id="cropRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="print-only"><h1 id="printTitle" style="color:#3f7a3a;margin:0 0 4px"></h1><p id="printSub" class="muted" style="margin:0 0 12px"></p></div>
+    <h2>3. התוכנית שלי</h2>
+    <div class="summary" id="summary"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ירק</th><th>כמות בשבוע</th><th>כמה לשתול</th><th>באיזו תדירות</th><th>שורות בערוגה</th><th>אורך ערוגה</th></tr></thead>
+        <tbody id="planRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. יומן שתילות וזריעות</h2>
+    <p class="muted">כל התאריכים שבהם צריך לשתול או לזרוע במהלך העונה. שתילה מתוכננת רק אם הירק יספיק להגיע לקטיף לפני סוף העונה.</p>
+    <div class="table-wrap" id="calendar"></div>
+  </section>
+
+  <section id="drawingSection">
+    <h2>5. שרטוט הגינה</h2>
+    <p class="muted no-print">שרטוט משוער: כל ירק מקבל את האורך שלו בערוגה, לפי הסדר בטבלה. הנקודות מראות את שורות השתילה והמרווחים.</p>
+    <div id="drawing"></div>
+  </section>
+
+  <section id="compostSection">
+    <h2>6. קומפוסט להקמת ערוגות חדשות</h2>
+    <label class="no-print" style="flex-direction:row;align-items:center;gap:6px;color:var(--ink)"><input id="newBeds" type="checkbox"> אני מקים/ה ערוגות חדשות</label>
+    <div id="compost"></div>
+  </section>
+
+  <div class="actions no-print">
+    <button id="pdfBtn">שמירה כ-PDF / הדפסה</button>
+    <label style="flex-direction:row;align-items:center;gap:6px;color:var(--ink)"><input id="includeDrawing" type="checkbox" checked> לכלול את השרטוט ב-PDF</label>
+    <button class="secondary" id="resetBtn">איפוס</button>
+  </div>
+  <p class="muted no-print">בחלון ההדפסה בוחרים ביעד: ״שמירה כ-PDF״.</p>
+</main>
+<footer>הנתונים נשמרים רק בדפדפן שלך. על פי טבלת הגידולים של קורס גן הירק הביתי.</footer>
+
+<script>
+// Source: the course's "תכנון תוצרת גינה ביתית" sheet.
+// base = weekly amount the row in the sheet supplies; plants/lenCm are for that base amount.
+// every: weeks between plantings, or 'season' (once) / 'twice' (twice per season).
+const CROPS = [
+  { id:'parsley',   name:'פטרוזיליה',  kind:'כמה חיתוכים', unit:'צרורות', base:1, plants:4, every:8, lenCm:40,  rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'6', bed:'14' },
+  { id:'coriander', name:'כוסברה',     kind:'כמה חיתוכים', unit:'צרורות', base:1, plants:4, every:3, lenCm:60,  rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'5', bed:'9' },
+  { id:'dill',      name:'שמיר',       kind:'כמה חיתוכים', unit:'צרורות', base:1, plants:4, every:3, lenCm:60,  rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'5', bed:'9' },
+  { id:'rocket',    name:'רוקט',       kind:'כמה חיתוכים', unit:'צרורות', base:1, plants:4, every:3, lenCm:60,  rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'3.5', bed:'8' },
+  { id:'fennel',    name:'שומר',       kind:'קטיף בודד', unit:'יחידות', base:3, plants:9, every:3, lenCm:140, rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'8 עד 10', bed:'8 עד 10' },
+  { id:'carrot',    name:'גזר',        kind:'קטיף בודד', unit:'צרורות', base:1, plants:9, sow:'drip', every:3, lenCm:180, rows:4, sp:20, spacing:'זריעה ישירה, 4 שורות, 2 אצבעות בין זרע לזרע', first:'10', window:'4', bed:'10' },
+  { id:'radish',    name:'צנונית',     kind:'קטיף בודד', unit:'צרורות', base:1, plants:3, sow:'drip', every:2, lenCm:60,  rows:6, sp:20, spacing:'זריעה ישירה, 6 שורות, בלי מרווחים', first:'3 עד 4', window:'1', bed:'3 עד 4' },
+  { id:'beet',      name:'סלק',        kind:'קטיף בודד', unit:'יחידות', base:4, plants:8, every:2, lenCm:160, rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'7', window:'3', bed:'7' },
+  { id:'arablettuce', name:'חסה ערבית', kind:'קטיף בודד', unit:'ראשים', base:1, plants:2, every:2, lenCm:40, rows:3, sp:20, spacing:'3 שורות כל 20 ס״מ', first:'4', window:'2 עד 3', bed:'4' },
+  { id:'lettuce',   name:'חסה קטנה',   kind:'קטיף בודד', unit:'ראשים', base:2, plants:4, every:2, lenCm:60,  rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'4', window:'2 עד 3', bed:'4' },
+  { id:'kohlrabi',  name:'קולורבי',    kind:'קטיף בודד', unit:'יחידות', base:4, plants:8, every:2, lenCm:140, rows:4, sp:20, spacing:'4 שורות כל 20 ס״מ', first:'7', window:'2', bed:'7' },
+  { id:'bokchoy',   name:'באק צ׳וי',   kind:'קטיף בודד', unit:'ראשים', base:1, plants:2, every:2, lenCm:40,  rows:3, sp:20, spacing:'3 שורות כל 20 ס״מ', first:'4', window:'2', bed:'4' },
+  { id:'cabbage',   name:'כרוב',       kind:'קטיף בודד', unit:'ראשים', base:1, plants:3, every:3, lenCm:120, rows:3, sp:40, spacing:'3 שורות כל 40 ס״מ', first:'9 עד 12', window:'3', bed:'9 עד 12' },
+  { id:'cauliflower', name:'כרובית',   kind:'קטיף בודד', unit:'ראשים', base:1, plants:2, every:2, lenCm:200, rows:2, sp:40, spacing:'2 שורות כל 40 ס״מ', first:'9 עד 12', window:'1', bed:'9 עד 12' },
+  { id:'broccoli',  name:'ברוקולי',    kind:'קטיף בודד', unit:'ראשים', base:1, plants:2, every:2, lenCm:200, rows:2, sp:40, spacing:'2 שורות כל 40 ס״מ', first:'9 עד 12', window:'1', bed:'9 עד 12' },
+  { id:'spinach',   name:'תרד טורקי',  kind:'מתמשך (חצי עונה)', unit:'צרורות', base:1, plants:3, every:'twice', lenCm:40, rows:3, sp:20, spacing:'3 שורות כל 20 ס״מ', first:'6', bed:'16 עד 20' },
+  { id:'chard',     name:'מנגולד',     kind:'מתמשך', unit:'צרורות', base:2, plants:4, every:'season', lenCm:80, rows:2, sp:40, spacing:'2 שורות כל 40 ס״מ', first:'5', bed:'כל העונה' },
+  { id:'kale',      name:'קייל',       kind:'מתמשך', unit:'צרורות', base:1, plants:2, every:'season', lenCm:60, rows:2, sp:40, spacing:'2 שורות כל 40 ס״מ', first:'6', bed:'כל העונה' },
+  { id:'greenonion', name:'בצל ירוק',  kind:'בודד / מתמשך', unit:'צרורות', base:1, plants:3, every:'twice', lenCm:40, rows:3, sp:20, spacing:'3 שורות כל 20 ס״מ', first:'7', bed:'כל העונה (האיכות יורדת)' },
+];
+const COLORS = ['#7fb069','#e6a157','#c96f8a','#5d9bc4','#d9c24a','#8e7cc3','#4fa58f','#d06d4f','#9bb34d','#b07fb0','#5aa1a1','#cf8f3f','#6f8fc9','#a3a35a','#c25d5d','#6aa86a','#bf9a6a','#7a9a9a','#b8b04a'];
+const STORAGE_KEY = 'garden-plan-v1';
+const REF_WIDTH_CM = 80; // the course table is written for 80 cm wide beds
+
+const $ = id => document.getElementById(id);
+const state = load();
+
+function defaults() {
+  const now = new Date();
+  // Winter season: late October to late May of the following year.
+  const y = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  return { owner:'', seasonStart:`${y}-10-22`, seasonEnd:`${y+1}-05-20`, bedCount:4, bedLength:4, bedWidth:REF_WIDTH_CM, includeDrawing:true, newBeds:false, qty:{} };
+}
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(STORAGE_KEY)); if (s) return Object.assign(defaults(), s); } catch (e) {}
+  return defaults();
+}
+function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {} }
+
+const fmtLen = cm => cm >= 100 ? `${(cm/100).toFixed(cm % 100 ? 1 : 0)} מ׳` : `${Math.round(cm)} ס״מ`;
+const fmtDate = d => d.toLocaleDateString('he-IL', { day:'numeric', month:'numeric', year:'2-digit' });
+const parseDate = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const addWeeks = (d, w) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + Math.round(w * 7));
+const minWeeks = s => parseFloat(String(s).split(/[–-]/)[0]) || 0;
+
+function freqText(c) {
+  if (c.every === 'season') return 'פעם אחת בעונה';
+  if (c.every === 'twice') return 'פעמיים בעונה';
+  if (c.every === 1) return 'כל שבוע';
+  if (c.every === 2) return 'פעם בשבועיים';
+  return `פעם ב-${c.every} שבועות`;
+}
+
+function plan() {
+  return CROPS.map((c, i) => {
+    const qty = Number(state.qty[c.id]) || 0;
+    if (qty <= 0) return null;
+    const scale = qty / c.base;
+    const plants = Math.ceil(c.plants * scale - 1e-9);
+    // Spacing between rows stays fixed, so a wider bed fits more rows and needs less length.
+    const width = Number(state.bedWidth) || REF_WIDTH_CM;
+    const rows = Math.max(1, Math.floor(width / (REF_WIDTH_CM / c.rows) + 1e-9));
+    // Plants standing in the bed at once (per the table), laid out in whole columns spaced c.sp apart.
+    const atOnce = Math.ceil((c.lenCm / c.sp) * c.rows * scale - 1e-9);
+    const len = Math.ceil(atOnce / rows) * c.sp;
+    return { ...c, color: COLORS[i % COLORS.length], qty, plants, rows, len,
+      plantText: c.sow === 'drip' ? `זריעה סביב ${plants} טפטפות` : `${plants} שתילים` };
+  }).filter(Boolean);
+}
+
+function plantingDates(c, start, end) {
+  const dates = [];
+  const lastUseful = addWeeks(end, -minWeeks(c.first)); // must reach first harvest before season ends
+  if (c.every === 'season') return [start];
+  if (c.every === 'twice') {
+    const mid = new Date((start.getTime() + end.getTime()) / 2);
+    return mid <= lastUseful ? [start, new Date(mid.getFullYear(), mid.getMonth(), mid.getDate())] : [start];
+  }
+  for (let d = start; d <= lastUseful; d = addWeeks(d, c.every)) dates.push(d);
+  return dates.length ? dates : [start];
+}
+
+function renderInputs() {
+  ['owner','seasonStart','seasonEnd','bedCount','bedLength','bedWidth'].forEach(k => $(k).value = state[k]);
+  $('includeDrawing').checked = state.includeDrawing;
+  $('newBeds').checked = state.newBeds;
+  $('cropRows').innerHTML = CROPS.map(c => `
+    <tr data-id="${c.id}">
+      <td><b>${c.name}</b></td>
+      <td><span class="tag">${c.kind}</span></td>
+      <td class="qty"><input type="number" min="0" step="1" value="${state.qty[c.id] || 0}" data-crop="${c.id}"> <span class="muted">${c.unit}</span></td>
+      <td class="muted">${c.spacing}</td>
+      <td class="muted">${c.first} שבועות</td>
+    </tr>`).join('');
+}
+
+function renderOutput() {
+  const items = plan();
+  const totalCm = items.reduce((s, c) => s + c.len, 0);
+  const availCm = (Number(state.bedCount) || 0) * (Number(state.bedLength) || 0) * 100;
+  const free = availCm - totalCm;
+
+  document.querySelectorAll('#cropRows tr').forEach(tr => tr.classList.toggle('active', (Number(state.qty[tr.dataset.id]) || 0) > 0));
+
+  $('printTitle').textContent = state.owner ? `תכנון תוצרת – ${state.owner}` : 'תכנון תוצרת חורף';
+  $('printSub').textContent = `עונה: ${fmtDate(parseDate(state.seasonStart))} – ${fmtDate(parseDate(state.seasonEnd))} · ${state.bedCount} ערוגות של ${state.bedLength} מ׳ × ${state.bedWidth} ס״מ`;
+
+  $('summary').innerHTML = `
+    <div class="stat">סה״כ אורך ערוגה נדרש<b>${fmtLen(totalCm)}</b></div>
+    <div class="stat">אורך ערוגה שיש לי<b>${fmtLen(availCm)}</b></div>
+    <div class="stat ${free < 0 ? 'warn' : ''}">${free < 0 ? 'חסר מקום' : 'נשאר מקום פנוי'}<b>${fmtLen(Math.abs(free))}</b>
+      <span class="muted" style="color:inherit">${free < 0 ? 'כדאי להוריד כמויות או גידולים גדולים ואיטיים (כרוב, כרובית, ברוקולי)' : 'אפשר להוסיף עוד ירקות'}</span></div>`;
+
+  $('planRows').innerHTML = items.length ? items.map(c => `
+    <tr>
+      <td><span class="swatch" style="background:${c.color}"></span><b>${c.name}</b></td>
+      <td>${c.qty} ${c.unit}</td>
+      <td>${c.plantText}</td>
+      <td>${freqText(c)}</td>
+      <td>${c.rows}</td>
+      <td>${fmtLen(c.len)}</td>
+    </tr>`).join('') + `<tr><td colspan="5"><b>סה״כ</b></td><td><b>${fmtLen(totalCm)}</b></td></tr>`
+    : `<tr><td colspan="6" class="empty">עוד לא נבחרו ירקות. מכניסים כמות שבועית בטבלה למעלה.</td></tr>`;
+
+  renderCalendar(items);
+  renderDrawing(items, availCm);
+  renderCompost();
+  document.body.classList.toggle('no-drawing', !state.includeDrawing);
+  document.body.classList.toggle('new-beds', state.newBeds);
+}
+
+function renderCalendar(items) {
+  const start = parseDate(state.seasonStart), end = parseDate(state.seasonEnd);
+  if (!items.length || !(end > start)) { $('calendar').innerHTML = `<p class="empty">${items.length ? 'תאריך הסוף צריך להיות אחרי תאריך ההתחלה.' : 'היומן יופיע כאן אחרי שבוחרים ירקות.'}</p>`; return; }
+  const byDate = new Map();
+  items.forEach(c => plantingDates(c, start, end).forEach(d => {
+    const k = d.getTime();
+    if (!byDate.has(k)) byDate.set(k, []);
+    byDate.get(k).push(c);
+  }));
+  const keys = [...byDate.keys()].sort((a, b) => a - b);
+  $('calendar').innerHTML = `<table><thead><tr><th>תאריך</th><th>מה לשתול / לזרוע</th></tr></thead><tbody>${
+    keys.map(k => `<tr><td style="white-space:nowrap"><b>${fmtDate(new Date(k))}</b></td><td>${
+      byDate.get(k).map(c => `<span style="white-space:nowrap;margin-inline-end:14px"><span class="swatch" style="background:${c.color}"></span>${c.name}: ${c.plantText}</span>`).join(' ')
+    }</td></tr>`).join('')}</tbody></table>`;
+}
+
+// Compost amounts from the course's bed-setup document (new beds only).
+function renderCompost() {
+  if (!state.newBeds) { $('compost').innerHTML = '<p class="muted">רלוונטי רק למי שמקים ערוגה חדשה. מסמנים את התיבה כדי לראות כמה קומפוסט צריך.</p>'; return; }
+  const area = (Number(state.bedCount) || 0) * (Number(state.bedLength) || 0) * ((Number(state.bedWidth) || 0) / 100);
+  const liters = cmDepth => area * cmDepth * 10; // 1 m² × 1 cm = 10 liters
+  const vol = l => l >= 1000 ? `${(l / 1000).toFixed(1)} קוב` : `${Math.round(l)} ליטר`;
+  const range = (a, b) => `${vol(liters(a))} עד ${vol(liters(b))}`;
+  $('compost').innerHTML = `
+    <p>שטח הערוגות: <b>${area.toFixed(1)} מ״ר</b> (${state.bedCount} ערוגות × ${state.bedLength} מ׳ × ${state.bedWidth} ס״מ)</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>שיטת הקמה</th><th>מה עושים</th><th>כמה קומפוסט</th></tr></thead>
+      <tbody>
+        <tr><td><b>השיטה הקלאסית</b></td><td>מפזרים קומפוסט ומערבבים לעומק של כ-30 ס״מ</td><td>${vol(area * 25)} <span class="muted">(25 ליטר למ״ר)</span></td></tr>
+        <tr><td><b>נו דיג</b></td><td>קרטונים, ומעליהם שכבת קומפוסט של 15 עד 20 ס״מ</td><td>${range(15, 20)}</td></tr>
+        <tr><td><b>חיפוי קומפוסט עמוק</b></td><td>שכבת קומפוסט של 10 עד 15 ס״מ, בלי קרטונים</td><td>${range(10, 15)}</td></tr>
+      </tbody>
+    </table></div>
+    <p class="muted">הכמויות הן להקמה בלבד. השבילים לא נכללים בחישוב (בנו דיג ממלאים אותם ברסק עץ).</p>`;
+}
+
+function renderDrawing(items, availCm) {
+  const beds = Math.max(1, Math.min(30, Number(state.bedCount) || 1));
+  const bedCm = Math.max(50, (Number(state.bedLength) || 1) * 100);
+  if (!items.length) { $('drawing').innerHTML = '<p class="empty">השרטוט יופיע כאן אחרי שבוחרים ירקות.</p>'; return; }
+
+  // Lay crops end to end, wrapping into the next bed when one fills up.
+  const segs = []; let bed = 0, pos = 0;
+  for (const c of items) {
+    let left = c.len;
+    while (left > 0.5) {
+      if (pos >= bedCm - 0.5) { bed++; pos = 0; }
+      const take = Math.min(left, bedCm - pos);
+      segs.push({ c, bed, from: pos, len: take });
+      pos += take; left -= take;
+    }
+  }
+  const totalBeds = Math.max(beds, bed + 1);
+  const W = 1000, pad = 40, bedH = 90, gap = 44;
+  const scale = (W - pad * 2) / bedCm;
+  const H = pad + totalBeds * (bedH + gap);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" direction="rtl">`;
+  for (let b = 0; b < totalBeds; b++) {
+    const y = pad / 2 + b * (bedH + gap) + 20;
+    const extra = b >= beds;
+    svg += `<text x="${W - pad}" y="${y - 8}" font-size="16" text-anchor="start" fill="${extra ? '#b4532a' : '#2b2a26'}">ערוגה ${b + 1}${extra ? ' (חסרה – אין לה מקום בגינה)' : ''} · ${fmtLen(bedCm)}</text>`;
+    svg += `<rect x="${pad}" y="${y}" width="${W - pad * 2}" height="${bedH}" rx="8" fill="#8b6b4a" fill-opacity="${extra ? 0.12 : 0.22}" stroke="${extra ? '#b4532a' : '#8b6b4a'}" stroke-dasharray="${extra ? '6 4' : ''}"/>`;
+  }
+  for (const s of segs) {
+    const y = pad / 2 + s.bed * (bedH + gap) + 20;
+    // Draw right-to-left so the first crop sits at the right edge, matching reading order.
+    const x = W - pad - (s.from + s.len) * scale, w = s.len * scale;
+    svg += `<rect x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" height="${bedH - 2}" rx="6" fill="${s.c.color}" fill-opacity="0.35" stroke="${s.c.color}"/>`;
+    const rows = s.c.rows, rowGap = (bedH - 24) / rows;
+    const cols = Math.max(1, Math.floor(s.len / s.c.sp));
+    for (let r = 0; r < rows; r++) {
+      const cy = y + 18 + rowGap * (r + 0.5);
+      if (s.c.sow === 'drip') {
+        svg += `<line x1="${x + 6}" x2="${x + w - 6}" y1="${cy}" y2="${cy}" stroke="${s.c.color}" stroke-width="3" stroke-dasharray="2 3"/>`;
+      } else {
+        for (let k = 0; k < cols; k++) {
+          const cx = x + (k + 0.5) * (w / cols);
+          svg += `<circle cx="${cx}" cy="${cy}" r="${Math.min(6, rowGap / 3)}" fill="${s.c.color}"/>`;
+        }
+      }
+    }
+    if (w > 40) svg += `<text x="${x + w / 2}" y="${y + 14}" font-size="${w > 90 ? 14 : 11}" text-anchor="middle" fill="#2b2a26" font-weight="bold">${w > 130 ? `${s.c.name} · ${fmtLen(s.len)}` : s.c.name}</text>`;
+  }
+  svg += '</svg>';
+  const legend = items.map(c => `<span style="white-space:nowrap;margin-inline-end:14px"><span class="swatch" style="background:${c.color}"></span>${c.name}</span>`).join(' ');
+  $('drawing').innerHTML = svg + `<p style="margin:8px 0 0">${legend}</p>`;
+}
+
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.crop) state.qty[t.dataset.crop] = Math.max(0, Number(t.value) || 0);
+  else if (t.id === 'includeDrawing') state.includeDrawing = t.checked;
+  else if (t.id === 'newBeds') state.newBeds = t.checked;
+  else if (t.id in state) state[t.id] = t.value;
+  else return;
+  save(); renderOutput();
+});
+$('pdfBtn').addEventListener('click', () => window.print());
+$('resetBtn').addEventListener('click', () => {
+  Object.assign(state, defaults()); state.qty = {};
+  save(); renderInputs(); renderOutput();
+});
+
+renderInputs();
+renderOutput();
+</script>
+</body>
+</html>
