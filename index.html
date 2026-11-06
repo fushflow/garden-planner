@@ -37,11 +37,24 @@
   .stat.warn { background: var(--warn-soft); color: var(--warn); }
   .empty { color: var(--muted); padding: 12px 0; }
   .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
-  #drawing svg { width: 100%; height: auto; display: block; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
-  .legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 11px; color: #fff; font-size: 13px; font-weight: bold;
-    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Garden drawing: each bed is a column read top to bottom, crops stacked along its length. */
+  .beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+  .bed { break-inside: avoid; }
+  .bed-title { font-weight: bold; margin-bottom: 4px; }
+  .bed-title.missing { color: var(--warn); }
+  .bed-body { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 3px; border: 2px solid #9c7b55; border-radius: 8px; background: #efe5d5; margin-inline-start: 34px; }
+  .bed-body.missing { border: 2px dashed var(--warn); background: #fbf3ee; }
+  .seg { display: flex; flex-direction: column; border: 2px solid var(--c); border-radius: 6px; overflow: hidden; background: #fff; }
+  .seg-head { background: var(--c); color: #fff; font-size: 13px; line-height: 1.25; padding: 3px 8px; display: flex; justify-content: space-between; gap: 6px; }
+  .seg-head b { font-size: 14px; }
+  .seg-dots { flex: 1; display: grid; gap: 2px; place-items: center; align-content: space-evenly; padding: 2px 6px; background: color-mix(in srgb, var(--c) 12%, #fff); overflow: hidden; }
+  .seg-dots i { display: block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  .seg-dots.drip { place-items: stretch center; align-content: stretch; padding: 4px 6px; }
+  .seg-dots.drip i { width: 0; height: auto; border-radius: 0; background: none; border-inline-start: 3px dotted var(--c); }
+  .seg-free { flex: 1; }
+  .tick { position: absolute; inset-inline-start: -34px; width: 30px; font-size: 11px; color: var(--muted); text-align: left; transform: translateY(-50%); }
+  .tick::after { content: ""; position: absolute; inset-inline-end: -6px; top: 50%; width: 6px; border-top: 1px solid #9c7b55; }
+  .bed, .seg, .seg-head, .seg-dots, .seg-dots i, .bed-body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-only, .m-only { display: none; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 0 24px; }
@@ -151,7 +164,7 @@
 
   <section id="drawingSection">
     <h2>5. שרטוט הגינה</h2>
-    <p class="muted no-print">שרטוט משוער: כל ירק מקבל את האורך שלו בערוגה, לפי הסדר בטבלה. הנקודות מראות את שורות השתילה והמרווחים.</p>
+    <p class="muted no-print">שרטוט משוער: כל ירק מקבל את האורך שלו בערוגה, לפי הסדר בטבלה.</p>
     <div id="drawing"></div>
   </section>
 
@@ -357,79 +370,39 @@ function renderDrawing(items, availCm) {
 
   // Lay crops end to end, wrapping into the next bed when one fills up.
   const segs = []; let bed = 0, pos = 0;
-  items.forEach((c, n) => {
+  for (const c of items) {
     let left = c.len;
     while (left > 0.5) {
       if (pos >= bedCm - 0.5) { bed++; pos = 0; }
       const take = Math.min(left, bedCm - pos);
-      segs.push({ c, n: n + 1, bed, from: pos, len: take });
+      segs.push({ c, bed, len: take });
       pos += take; left -= take;
     }
-  });
+  }
   const totalBeds = Math.max(beds, bed + 1);
-  // z enlarges text and beds when the drawing is shown narrow (phones), since the SVG is scaled down to fit.
-  const shownW = $('drawing').clientWidth || 1000;
-  const z = printing ? 1 : Math.min(2.6, Math.max(1, 900 / shownW));
-  const W = 1000, pad = 20, bedH = 104 * z, gap = 58 * z, stripH = 26 * z;
-  const scale = (W - pad * 2) / bedCm;
-  const top = 26 * z; // room for the first bed title
-  const H = top + totalBeds * (bedH + gap) - gap + 30 * z;
-  const xAt = cm => W - pad - cm * scale; // beds are read right-to-left
-  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" direction="rtl">`;
+  // Scale so even the shortest piece is tall enough for its name, within sensible limits.
+  const shortest = Math.min(...segs.map(s => s.len));
+  const pxPerCm = Math.min(2.4, Math.max(1.1, 72 / shortest));
 
+  let html = '<div class="beds">';
   for (let b = 0; b < totalBeds; b++) {
-    const y = top + b * (bedH + gap);
-    const extra = b >= beds;
-    svg += `<text x="${W - pad}" y="${y - 8 * z}" font-size="${15 * z}" font-weight="bold" text-anchor="start" fill="${extra ? '#b4532a' : '#2b2a26'}">ערוגה ${b + 1}${extra ? ' – חסרה, אין לה מקום בגינה' : ''}</text>`;
-    svg += `<rect x="${pad}" y="${y}" width="${W - pad * 2}" height="${bedH}" rx="${6 * z}" fill="${extra ? '#fbf3ee' : '#efe5d5'}" stroke="${extra ? '#b4532a' : '#9c7b55'}" stroke-width="${1.5 * z}" stroke-dasharray="${extra ? `${6 * z} ${4 * z}` : ''}"/>`;
-    // Ruler under the bed: a tick every 50 cm, a label every meter.
-    for (let cm = 0; cm <= bedCm + 0.5; cm += 50) {
-      const tx = xAt(cm), major = cm % 100 === 0;
-      svg += `<line x1="${tx}" x2="${tx}" y1="${y + bedH + 2 * z}" y2="${y + bedH + (major ? 8 : 5) * z}" stroke="#9c7b55" stroke-width="${z}"/>`;
-      // Edge labels hang inward so they are not clipped (rtl: start = right edge, end = left edge).
-      const anchor = cm === 0 ? 'start' : cm + 100 > bedCm ? 'end' : 'middle';
-      if (major) svg += `<text x="${tx}" y="${y + bedH + 19 * z}" font-size="${10 * z}" text-anchor="${anchor}" fill="#6d6a60">${cm / 100} מ׳</text>`;
+    const missing = b >= beds;
+    html += `<div class="bed"><div class="bed-title${missing ? ' missing' : ''}">ערוגה ${b + 1}${missing ? ' – חסרה, אין לה מקום בגינה' : ` · ${fmtLen(bedCm)}`}</div>`;
+    html += `<div class="bed-body${missing ? ' missing' : ''}" style="height:${bedCm * pxPerCm + 6}px">`;
+    for (let cm = 100; cm < bedCm; cm += 100) html += `<span class="tick" style="top:${3 + cm * pxPerCm}px">${cm / 100} מ׳</span>`;
+    for (const s of segs.filter(s => s.bed === b)) {
+      const c = s.c;
+      const cols = Math.max(1, Math.round(s.len / c.sp)); // plant positions along the bed
+      const dots = c.sow === 'drip' ? '<i></i>'.repeat(c.rows) : '<i></i>'.repeat(c.rows * cols);
+      html += `<div class="seg" style="--c:${c.color};flex:0 0 ${s.len * pxPerCm - 3}px">
+        <div class="seg-head"><b>${c.name}</b><span>${fmtLen(s.len)}</span></div>
+        <div class="seg-dots${c.sow === 'drip' ? ' drip' : ''}" style="grid-template-columns:repeat(${c.rows},1fr)">${dots}</div>
+      </div>`;
     }
+    html += '<div class="seg-free"></div></div></div>';
   }
-
-  for (const s of segs) {
-    const y = top + s.bed * (bedH + gap);
-    const x = xAt(s.from + s.len), w = s.len * scale, inset = 2 * z;
-    const color = s.c.color;
-    svg += `<rect x="${x + inset}" y="${y + inset}" width="${Math.max(0, w - inset * 2)}" height="${bedH - inset * 2}" rx="${5 * z}" fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-width="${2 * z}"/>`;
-    svg += `<rect x="${x + inset}" y="${y + inset}" width="${Math.max(0, w - inset * 2)}" height="${stripH}" rx="${5 * z}" fill="${color}"/>`;
-
-    // Name strip: number badge always, then the longest name text that fits.
-    const fs = 13 * z, badgeR = 9 * z, bx = x + w - inset - badgeR - 4 * z, by = y + inset + stripH / 2;
-    if (w > badgeR * 2 + 8 * z) {
-      svg += `<circle cx="${bx}" cy="${by}" r="${badgeR}" fill="#fff"/>`;
-      svg += `<text x="${bx}" y="${by + 4.5 * z}" font-size="${12 * z}" font-weight="bold" text-anchor="middle" fill="${color}">${s.n}</text>`;
-      // Longest label that fits: name + length, then name, then name in a smaller font.
-      const room = w - badgeR * 2 - 16 * z;
-      const pick = [[`${s.c.name} · ${fmtLen(s.len)}`, fs], [s.c.name, fs], [s.c.name, fs * 0.8]]
-        .find(([t, size]) => t.length * size * 0.56 < room);
-      if (pick) svg += `<text x="${bx - badgeR - 5 * z}" y="${by + 4.5 * z}" font-size="${pick[1]}" font-weight="bold" text-anchor="start" fill="#fff">${pick[0]}</text>`;
-    }
-
-    // Plants: one dot per plant position (rows across, columns every c.sp cm), or drip lines for sown crops.
-    const areaTop = y + inset + stripH + 4 * z, areaH = bedH - inset * 2 - stripH - 8 * z;
-    const rows = s.c.rows, rowGap = areaH / rows;
-    const cols = Math.max(1, Math.round(s.len / s.c.sp));
-    for (let r = 0; r < rows; r++) {
-      const cy = areaTop + rowGap * (r + 0.5);
-      if (s.c.sow === 'drip') {
-        svg += `<line x1="${x + 8 * z}" x2="${x + w - 8 * z}" y1="${cy}" y2="${cy}" stroke="${color}" stroke-width="${3 * z}" stroke-linecap="round" stroke-dasharray="${0.1 * z} ${5 * z}"/>`;
-      } else {
-        const rad = Math.max(2, Math.min(6.5 * z, rowGap / 2.6, (w / cols) / 2.6));
-        for (let k = 0; k < cols; k++) {
-          svg += `<circle cx="${x + (k + 0.5) * (w / cols)}" cy="${cy}" r="${rad}" fill="${color}" stroke="#fff" stroke-width="${z}"/>`;
-        }
-      }
-    }
-  }
-  svg += '</svg>';
-  const legend = items.map((c, n) => `<span class="legend-item"><span class="badge" style="background:${c.color}">${n + 1}</span>${c.name} <span class="muted">${fmtLen(c.len)}</span></span>`).join('');
-  $('drawing').innerHTML = svg + `<div class="legend">${legend}</div><p class="muted" style="margin:6px 0 0">כל נקודה היא שתיל. בגזר ובצנונית הקווים המנוקדים הם שורות זריעה.</p>`;
+  html += '</div>';
+  $('drawing').innerHTML = html + '<p class="muted" style="margin:8px 0 0">כל ערוגה מצוירת מלמעלה למטה לאורכה. כל נקודה היא שתיל. בגזר ובצנונית הקווים המנוקדים הם שורות זריעה.</p>';
 }
 
 document.addEventListener('input', e => {
