@@ -133,7 +133,7 @@
     <div class="summary" id="summary"></div>
     <div class="table-wrap">
       <table class="cards">
-        <thead><tr><th>ירק</th><th>כמות בשבוע</th><th>כמה לשתול</th><th>באיזו תדירות</th><th>שורות בערוגה</th><th>אורך ערוגה</th></tr></thead>
+        <thead><tr><th>ירק</th><th>כמות בשבוע</th><th>כמה לשתול</th><th>באיזו תדירות</th><th>מרווחים</th><th>שורות</th><th>אורך ערוגה</th></tr></thead>
         <tbody id="planRows"></tbody>
       </table>
     </div>
@@ -216,6 +216,14 @@ const parseDate = s => { const [y,m,d] = s.split('-').map(Number); return new Da
 const addWeeks = (d, w) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + Math.round(w * 7));
 const minWeeks = s => parseFloat(String(s).split(/[–-]/)[0]) || 0;
 
+// In-row spacing comes from the table; row spacing is the 80 cm reference width split by the table's row count.
+function spacingText(c) {
+  if (c.sow === 'drip') return c.spacing.replace(/^זריעה ישירה, \d+ שורות, /, 'זריעה ישירה, ');
+  const between = REF_WIDTH_CM / c.rows;
+  const rowGap = Number.isInteger(between) ? `${between}` : `כ-${Math.round(between)}`;
+  return `<span style="white-space:nowrap">${c.sp} ס״מ בין שתילים</span><br><span style="white-space:nowrap">${rowGap} ס״מ בין שורות</span>`;
+}
+
 function freqText(c) {
   if (c.every === 'season') return 'פעם אחת בעונה';
   if (c.every === 'twice') return 'פעמיים בעונה';
@@ -290,10 +298,11 @@ function renderOutput() {
       <td data-label="כמות בשבוע">${c.qty} ${c.unit}</td>
       <td data-label="כמה לשתול">${c.plantText}</td>
       <td data-label="באיזו תדירות">${freqText(c)}</td>
+      <td data-label="מרווחים"><span>${spacingText(c)}</span></td>
       <td data-label="שורות לרוחב הערוגה">${c.rows}</td>
       <td data-label="אורך ערוגה"><b>${fmtLen(c.len)}</b></td>
-    </tr>`).join('') + `<tr class="total"><td colspan="5" class="no-mobile-label"><b>סה״כ</b></td><td data-label="סה״כ אורך"><b>${fmtLen(totalCm)}</b></td></tr>`
-    : `<tr><td colspan="6" class="empty">עוד לא נבחרו ירקות. מכניסים כמות שבועית בטבלה למעלה.</td></tr>`;
+    </tr>`).join('') + `<tr class="total"><td colspan="6" class="no-mobile-label"><b>סה״כ</b></td><td data-label="סה״כ אורך"><b>${fmtLen(totalCm)}</b></td></tr>`
+    : `<tr><td colspan="7" class="empty">עוד לא נבחרו ירקות. מכניסים כמות שבועית בטבלה למעלה.</td></tr>`;
 
   renderCalendar(items);
   renderDrawing(items, availCm);
