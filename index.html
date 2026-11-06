@@ -38,6 +38,10 @@
   .empty { color: var(--muted); padding: 12px 0; }
   .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
   #drawing svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 11px; color: #fff; font-size: 13px; font-weight: bold;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-only, .m-only { display: none; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 0 24px; }
@@ -191,7 +195,8 @@ const CROPS = [
   { id:'kale',      name:'קייל',       kind:'מתמשך', unit:'צרורות', base:1, plants:2, every:'season', lenCm:60, rows:2, sp:40, spacing:'2 שורות כל 40 ס״מ', first:'6', bed:'כל העונה' },
   { id:'greenonion', name:'בצל ירוק',  kind:'בודד / מתמשך', unit:'צרורות', base:1, plants:3, every:'twice', lenCm:40, rows:3, sp:20, spacing:'3 שורות כל 20 ס״מ', first:'7', bed:'כל העונה (האיכות יורדת)' },
 ];
-const COLORS = ['#7fb069','#e6a157','#c96f8a','#5d9bc4','#d9c24a','#8e7cc3','#4fa58f','#d06d4f','#9bb34d','#b07fb0','#5aa1a1','#cf8f3f','#6f8fc9','#a3a35a','#c25d5d','#6aa86a','#bf9a6a','#7a9a9a','#b8b04a'];
+// Strong, well-separated colors, handed out in the order crops are chosen so neighbours never look alike.
+const COLORS = ['#2e7d32','#e65100','#1565c0','#ad1457','#6a1b9a','#00838f','#9e7700','#c62828','#5d4037','#558b2f','#283593','#d84315','#00695c','#8e24aa','#0277bd','#827717','#bf360c','#37474f','#4e342e'];
 const STORAGE_KEY = 'garden-plan-v1';
 const REF_WIDTH_CM = 80; // the course table is written for 80 cm wide beds
 
@@ -233,7 +238,7 @@ function freqText(c) {
 }
 
 function plan() {
-  return CROPS.map((c, i) => {
+  return CROPS.map(c => {
     const qty = Number(state.qty[c.id]) || 0;
     if (qty <= 0) return null;
     const scale = qty / c.base;
@@ -244,9 +249,9 @@ function plan() {
     // Plants standing in the bed at once (per the table), laid out in whole columns spaced c.sp apart.
     const atOnce = Math.ceil((c.lenCm / c.sp) * c.rows * scale - 1e-9);
     const len = Math.ceil(atOnce / rows) * c.sp;
-    return { ...c, color: COLORS[i % COLORS.length], qty, plants, rows, len,
+    return { ...c, qty, plants, rows, len,
       plantText: c.sow === 'drip' ? `זריעה סביב ${plants} טפטפות` : `${plants} שתילים` };
-  }).filter(Boolean);
+  }).filter(Boolean).map((c, n) => ({ ...c, color: COLORS[n % COLORS.length] }));
 }
 
 function plantingDates(c, start, end) {
@@ -354,56 +359,79 @@ function renderDrawing(items, availCm) {
 
   // Lay crops end to end, wrapping into the next bed when one fills up.
   const segs = []; let bed = 0, pos = 0;
-  for (const c of items) {
+  items.forEach((c, n) => {
     let left = c.len;
     while (left > 0.5) {
       if (pos >= bedCm - 0.5) { bed++; pos = 0; }
       const take = Math.min(left, bedCm - pos);
-      segs.push({ c, bed, from: pos, len: take });
+      segs.push({ c, n: n + 1, bed, from: pos, len: take });
       pos += take; left -= take;
     }
-  }
+  });
   const totalBeds = Math.max(beds, bed + 1);
   // z enlarges text and beds when the drawing is shown narrow (phones), since the SVG is scaled down to fit.
   const shownW = $('drawing').clientWidth || 1000;
   const z = printing ? 1 : Math.min(2.6, Math.max(1, 900 / shownW));
-  const W = 1000, pad = 40, bedH = 90 * z, gap = 44 * z;
+  const W = 1000, pad = 20, bedH = 104 * z, gap = 58 * z, stripH = 26 * z;
   const scale = (W - pad * 2) / bedCm;
-  const top = pad / 2 + 20 * z; // room for the first bed title
-  const H = top + totalBeds * (bedH + gap);
+  const top = 26 * z; // room for the first bed title
+  const H = top + totalBeds * (bedH + gap) - gap + 30 * z;
+  const xAt = cm => W - pad - cm * scale; // beds are read right-to-left
   let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" direction="rtl">`;
+
   for (let b = 0; b < totalBeds; b++) {
     const y = top + b * (bedH + gap);
     const extra = b >= beds;
-    svg += `<text x="${W - pad}" y="${y - 8 * z}" font-size="${16 * z}" text-anchor="start" fill="${extra ? '#b4532a' : '#2b2a26'}">ערוגה ${b + 1}${extra ? ' (חסרה – אין לה מקום בגינה)' : ''} · ${fmtLen(bedCm)}</text>`;
-    svg += `<rect x="${pad}" y="${y}" width="${W - pad * 2}" height="${bedH}" rx="8" fill="#8b6b4a" fill-opacity="${extra ? 0.12 : 0.22}" stroke="${extra ? '#b4532a' : '#8b6b4a'}" stroke-dasharray="${extra ? '6 4' : ''}"/>`;
+    svg += `<text x="${W - pad}" y="${y - 8 * z}" font-size="${15 * z}" font-weight="bold" text-anchor="start" fill="${extra ? '#b4532a' : '#2b2a26'}">ערוגה ${b + 1}${extra ? ' – חסרה, אין לה מקום בגינה' : ''}</text>`;
+    svg += `<rect x="${pad}" y="${y}" width="${W - pad * 2}" height="${bedH}" rx="${6 * z}" fill="${extra ? '#fbf3ee' : '#efe5d5'}" stroke="${extra ? '#b4532a' : '#9c7b55'}" stroke-width="${1.5 * z}" stroke-dasharray="${extra ? `${6 * z} ${4 * z}` : ''}"/>`;
+    // Ruler under the bed: a tick every 50 cm, a label every meter.
+    for (let cm = 0; cm <= bedCm + 0.5; cm += 50) {
+      const tx = xAt(cm), major = cm % 100 === 0;
+      svg += `<line x1="${tx}" x2="${tx}" y1="${y + bedH + 2 * z}" y2="${y + bedH + (major ? 8 : 5) * z}" stroke="#9c7b55" stroke-width="${z}"/>`;
+      // Edge labels hang inward so they are not clipped (rtl: start = right edge, end = left edge).
+      const anchor = cm === 0 ? 'start' : cm + 100 > bedCm ? 'end' : 'middle';
+      if (major) svg += `<text x="${tx}" y="${y + bedH + 19 * z}" font-size="${10 * z}" text-anchor="${anchor}" fill="#6d6a60">${cm / 100} מ׳</text>`;
+    }
   }
+
   for (const s of segs) {
     const y = top + s.bed * (bedH + gap);
-    // Draw right-to-left so the first crop sits at the right edge, matching reading order.
-    const x = W - pad - (s.from + s.len) * scale, w = s.len * scale;
-    svg += `<rect x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" height="${bedH - 2}" rx="6" fill="${s.c.color}" fill-opacity="0.35" stroke="${s.c.color}"/>`;
-    const rows = s.c.rows, rowGap = (bedH - 24 * z) / rows;
-    const cols = Math.max(1, Math.floor(s.len / s.c.sp));
+    const x = xAt(s.from + s.len), w = s.len * scale, inset = 2 * z;
+    const color = s.c.color;
+    svg += `<rect x="${x + inset}" y="${y + inset}" width="${Math.max(0, w - inset * 2)}" height="${bedH - inset * 2}" rx="${5 * z}" fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-width="${2 * z}"/>`;
+    svg += `<rect x="${x + inset}" y="${y + inset}" width="${Math.max(0, w - inset * 2)}" height="${stripH}" rx="${5 * z}" fill="${color}"/>`;
+
+    // Name strip: number badge always, then the longest name text that fits.
+    const fs = 13 * z, badgeR = 9 * z, bx = x + w - inset - badgeR - 4 * z, by = y + inset + stripH / 2;
+    if (w > badgeR * 2 + 8 * z) {
+      svg += `<circle cx="${bx}" cy="${by}" r="${badgeR}" fill="#fff"/>`;
+      svg += `<text x="${bx}" y="${by + 4.5 * z}" font-size="${12 * z}" font-weight="bold" text-anchor="middle" fill="${color}">${s.n}</text>`;
+      // Longest label that fits: name + length, then name, then name in a smaller font.
+      const room = w - badgeR * 2 - 16 * z;
+      const pick = [[`${s.c.name} · ${fmtLen(s.len)}`, fs], [s.c.name, fs], [s.c.name, fs * 0.8]]
+        .find(([t, size]) => t.length * size * 0.56 < room);
+      if (pick) svg += `<text x="${bx - badgeR - 5 * z}" y="${by + 4.5 * z}" font-size="${pick[1]}" font-weight="bold" text-anchor="start" fill="#fff">${pick[0]}</text>`;
+    }
+
+    // Plants: one dot per plant position (rows across, columns every c.sp cm), or drip lines for sown crops.
+    const areaTop = y + inset + stripH + 4 * z, areaH = bedH - inset * 2 - stripH - 8 * z;
+    const rows = s.c.rows, rowGap = areaH / rows;
+    const cols = Math.max(1, Math.round(s.len / s.c.sp));
     for (let r = 0; r < rows; r++) {
-      const cy = y + 18 * z + rowGap * (r + 0.5);
+      const cy = areaTop + rowGap * (r + 0.5);
       if (s.c.sow === 'drip') {
-        svg += `<line x1="${x + 6}" x2="${x + w - 6}" y1="${cy}" y2="${cy}" stroke="${s.c.color}" stroke-width="3" stroke-dasharray="2 3"/>`;
+        svg += `<line x1="${x + 8 * z}" x2="${x + w - 8 * z}" y1="${cy}" y2="${cy}" stroke="${color}" stroke-width="${3 * z}" stroke-linecap="round" stroke-dasharray="${0.1 * z} ${5 * z}"/>`;
       } else {
+        const rad = Math.max(2, Math.min(6.5 * z, rowGap / 2.6, (w / cols) / 2.6));
         for (let k = 0; k < cols; k++) {
-          const cx = x + (k + 0.5) * (w / cols);
-          svg += `<circle cx="${cx}" cy="${cy}" r="${Math.min(6 * z, rowGap / 3)}" fill="${s.c.color}"/>`;
+          svg += `<circle cx="${x + (k + 0.5) * (w / cols)}" cy="${cy}" r="${rad}" fill="${color}" stroke="#fff" stroke-width="${z}"/>`;
         }
       }
     }
-    // Show the longest label that fits the segment; the legend below covers the rest.
-    const fs = 14 * z, fits = t => t.length * fs * 0.55 < w - 8;
-    const label = [`${s.c.name} · ${fmtLen(s.len)}`, s.c.name].find(fits);
-    if (label) svg += `<text x="${x + w / 2}" y="${y + 14 * z}" font-size="${fs}" text-anchor="middle" fill="#2b2a26" font-weight="bold">${label}</text>`;
   }
   svg += '</svg>';
-  const legend = items.map(c => `<span style="white-space:nowrap;margin-inline-end:14px"><span class="swatch" style="background:${c.color}"></span>${c.name}</span>`).join(' ');
-  $('drawing').innerHTML = svg + `<p style="margin:8px 0 0">${legend}</p>`;
+  const legend = items.map((c, n) => `<span class="legend-item"><span class="badge" style="background:${c.color}">${n + 1}</span>${c.name} <span class="muted">${fmtLen(c.len)}</span></span>`).join('');
+  $('drawing').innerHTML = svg + `<div class="legend">${legend}</div><p class="muted" style="margin:6px 0 0">כל נקודה היא שתיל. בגזר ובצנונית הקווים המנוקדים הם שורות זריעה.</p>`;
 }
 
 document.addEventListener('input', e => {
