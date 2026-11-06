@@ -221,12 +221,10 @@ const parseDate = s => { const [y,m,d] = s.split('-').map(Number); return new Da
 const addWeeks = (d, w) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + Math.round(w * 7));
 const minWeeks = s => parseFloat(String(s).split(/[–-]/)[0]) || 0;
 
-// In-row spacing comes from the table; row spacing is the 80 cm reference width split by the table's row count.
+// In-row spacing from the table (the row count has its own column).
 function spacingText(c) {
   if (c.sow === 'drip') return c.spacing.replace(/^זריעה ישירה, \d+ שורות, /, 'זריעה ישירה, ');
-  const between = REF_WIDTH_CM / c.rows;
-  const rowGap = Number.isInteger(between) ? `${between}` : `כ-${Math.round(between)}`;
-  return `<span style="white-space:nowrap">${c.sp} ס״מ בין שתילים</span><br><span style="white-space:nowrap">${rowGap} ס״מ בין שורות</span>`;
+  return `<span style="white-space:nowrap">${c.sp} ס״מ בין שתילים</span>`;
 }
 
 function freqText(c) {
