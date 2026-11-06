@@ -37,24 +37,7 @@
   .stat.warn { background: var(--warn-soft); color: var(--warn); }
   .empty { color: var(--muted); padding: 12px 0; }
   .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
-  /* Garden drawing: each bed is a column read top to bottom, crops stacked along its length. */
-  .beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
-  .bed { break-inside: avoid; }
-  .bed-title { font-weight: bold; margin-bottom: 4px; }
-  .bed-title.missing { color: var(--warn); }
-  .bed-body { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 3px; border: 2px solid #9c7b55; border-radius: 8px; background: #efe5d5; margin-inline-start: 34px; }
-  .bed-body.missing { border: 2px dashed var(--warn); background: #fbf3ee; }
-  .seg { display: flex; flex-direction: column; border: 2px solid var(--c); border-radius: 6px; overflow: hidden; background: #fff; }
-  .seg-head { background: var(--c); color: #fff; font-size: 13px; line-height: 1.25; padding: 3px 8px; display: flex; justify-content: space-between; gap: 6px; }
-  .seg-head b { font-size: 14px; }
-  .seg-dots { flex: 1; display: grid; gap: 2px; place-items: center; align-content: space-evenly; padding: 2px 6px; background: color-mix(in srgb, var(--c) 12%, #fff); overflow: hidden; }
-  .seg-dots i { display: block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
-  .seg-dots.drip { place-items: stretch center; align-content: stretch; padding: 4px 6px; }
-  .seg-dots.drip i { width: 0; height: auto; border-radius: 0; background: none; border-inline-start: 3px dotted var(--c); }
-  .seg-free { flex: 1; }
-  .tick { position: absolute; inset-inline-start: -34px; width: 30px; font-size: 11px; color: var(--muted); text-align: left; transform: translateY(-50%); }
-  .tick::after { content: ""; position: absolute; inset-inline-end: -6px; top: 50%; width: 6px; border-top: 1px solid #9c7b55; }
-  .bed, .seg, .seg-head, .seg-dots, .seg-dots i, .bed-body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #drawing svg { width: 100%; height: auto; display: block; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-only, .m-only { display: none; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 0 24px; }
@@ -164,7 +147,7 @@
 
   <section id="drawingSection">
     <h2>5. שרטוט הגינה</h2>
-    <p class="muted no-print">שרטוט משוער: כל ירק מקבל את האורך שלו בערוגה, לפי הסדר בטבלה.</p>
+    <p class="muted no-print">שרטוט משוער: כל ירק מקבל את האורך שלו בערוגה, לפי הסדר בטבלה. ירק צר מדי לשם שלו מסומן בקו עם השם מעל הערוגה.</p>
     <div id="drawing"></div>
   </section>
 
@@ -375,34 +358,117 @@ function renderDrawing(items, availCm) {
     while (left > 0.5) {
       if (pos >= bedCm - 0.5) { bed++; pos = 0; }
       const take = Math.min(left, bedCm - pos);
-      segs.push({ c, bed, len: take });
+      segs.push({ c, bed, from: pos, len: take });
       pos += take; left -= take;
     }
   }
   const totalBeds = Math.max(beds, bed + 1);
-  // Scale so even the shortest piece is tall enough for its name, within sensible limits.
-  const shortest = Math.min(...segs.map(s => s.len));
-  const pxPerCm = Math.min(2.4, Math.max(1.1, 72 / shortest));
+  // z enlarges text and beds when the drawing is shown narrow (phones), since the SVG is scaled down to fit.
+  const shownW = $('drawing').clientWidth || 1000;
+  const z = printing ? 1 : Math.min(3.2, Math.max(1, 1000 / shownW));
+  const W = 1000, pad = 20, bedH = 96 * z, stripH = 24 * z, fs = 13 * z, laneH = 20 * z;
+  const scale = (W - pad * 2) / bedCm;
+  const xAt = cm => W - pad - cm * scale; // beds are read right-to-left
+  const textW = (t, size) => t.length * size * 0.62; // rough width of bold Hebrew text
 
-  let html = '<div class="beds">';
-  for (let b = 0; b < totalBeds; b++) {
-    const missing = b >= beds;
-    html += `<div class="bed"><div class="bed-title${missing ? ' missing' : ''}">ערוגה ${b + 1}${missing ? ' – חסרה, אין לה מקום בגינה' : ` · ${fmtLen(bedCm)}`}</div>`;
-    html += `<div class="bed-body${missing ? ' missing' : ''}" style="height:${bedCm * pxPerCm + 6}px">`;
-    for (let cm = 100; cm < bedCm; cm += 100) html += `<span class="tick" style="top:${3 + cm * pxPerCm}px">${cm / 100} מ׳</span>`;
-    for (const s of segs.filter(s => s.bed === b)) {
-      const c = s.c;
-      const cols = Math.max(1, Math.round(s.len / c.sp)); // plant positions along the bed
-      const dots = c.sow === 'drip' ? '<i></i>'.repeat(c.rows) : '<i></i>'.repeat(c.rows * cols);
-      html += `<div class="seg" style="--c:${c.color};flex:0 0 ${s.len * pxPerCm - 3}px">
-        <div class="seg-head"><b>${c.name}</b><span>${fmtLen(s.len)}</span></div>
-        <div class="seg-dots${c.sow === 'drip' ? ' drip' : ''}" style="grid-template-columns:repeat(${c.rows},1fr)">${dots}</div>
-      </div>`;
-    }
-    html += '<div class="seg-free"></div></div></div>';
+  // Each crop gets its name in its colored strip when it fits; otherwise the name goes above the bed
+  // with a line down to the crop, stacked in lanes so labels never overlap.
+  for (const s of segs) {
+    s.x = xAt(s.from + s.len); s.w = s.len * scale; s.cx = s.x + s.w / 2;
+    const full = `${s.c.name} · ${fmtLen(s.len)}`;
+    s.inside = [full, s.c.name].find(t => textW(t, fs) < s.w - 10 * z);
+    if (!s.inside) s.callout = full;
   }
-  html += '</div>';
-  $('drawing').innerHTML = html + '<p class="muted" style="margin:8px 0 0">כל ערוגה מצוירת מלמעלה למטה לאורכה. כל נקודה היא שתיל. בגזר ובצנונית הקווים המנוקדים הם שורות זריעה.</p>';
+  const lanesPerBed = [];
+  for (let b = 0; b < totalBeds; b++) {
+    const lanes = [];
+    // Each label hangs from its line to one side. Working from the middle of the bed outward, every label
+    // takes the lowest lane (and side) where it doesn't touch another label and its line doesn't cut
+    // through one; lines already drawn are reserved in the lanes they pass, so later labels avoid them.
+    const outs = segs.filter(s => s.bed === b && s.callout)
+      .sort((p, q) => Math.abs(p.cx - W / 2) - Math.abs(q.cx - W / 2));
+    const free = (l, a0, b0) => (lanes[l] || []).every(([a1, b1]) => b0 < a1 || a0 > b1);
+    for (const s of outs) {
+      const width = textW(s.callout, fs) + 8 * z;
+      const towardMiddle = s.cx >= W / 2 ? 'left' : 'right';
+      let best = null;
+      for (const side of [towardMiddle, towardMiddle === 'left' ? 'right' : 'left']) {
+        let lo = side === 'left' ? s.cx - width + 4 * z : s.cx - 4 * z;
+        lo = Math.min(Math.max(pad, lo), W - pad - width);
+        const hi = lo + width;
+        for (let l = 0; l <= lanes.length; l++) {
+          const lineOk = [...Array(l).keys()].every(k => free(k, s.cx - 2 * z, s.cx + 2 * z));
+          if (free(l, lo, hi) && lineOk) { if (!best || l < best.l) best = { l, lo, hi, side }; break; }
+        }
+      }
+      if (!best) { best = { l: lanes.length, lo: Math.max(pad, s.cx - width / 2), hi: 0, side: 'left' }; best.hi = best.lo + width; }
+      for (let k = 0; k <= best.l; k++) lanes[k] = lanes[k] || [];
+      lanes[best.l].push([best.lo, best.hi]);
+      for (let k = 0; k < best.l; k++) lanes[k].push([s.cx - 2 * z, s.cx + 2 * z]); // reserve the line
+      // Pin the text to the end next to its line (rtl: 'start' is the right edge, 'end' the left edge).
+      s.lane = best.l;
+      [s.tx, s.anchor] = best.side === 'left' ? [best.hi - 4 * z, 'start'] : [best.lo + 4 * z, 'end'];
+    }
+    lanesPerBed.push(lanes.length);
+  }
+
+  // Vertical layout: title, callout lanes, bed, ruler — per bed.
+  const bedTop = []; let y = 0;
+  for (let b = 0; b < totalBeds; b++) {
+    y += 22 * z + lanesPerBed[b] * laneH + (lanesPerBed[b] ? 6 * z : 0);
+    bedTop.push(y);
+    y += bedH + 30 * z;
+  }
+  const H = y;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" direction="rtl">`;
+
+  for (let b = 0; b < totalBeds; b++) {
+    const top = bedTop[b], extra = b >= beds;
+    const titleY = top - lanesPerBed[b] * laneH - (lanesPerBed[b] ? 6 * z : 0) - 7 * z;
+    svg += `<text x="${W - pad}" y="${titleY}" font-size="${15 * z}" font-weight="bold" text-anchor="start" fill="${extra ? '#b4532a' : '#2b2a26'}">ערוגה ${b + 1} · ${fmtLen(bedCm)}${extra ? ' – חסרה, אין לה מקום בגינה' : ''}</text>`;
+    svg += `<rect x="${pad}" y="${top}" width="${W - pad * 2}" height="${bedH}" rx="${6 * z}" fill="${extra ? '#fbf3ee' : '#efe5d5'}" stroke="${extra ? '#b4532a' : '#9c7b55'}" stroke-width="${1.5 * z}" stroke-dasharray="${extra ? `${6 * z} ${4 * z}` : ''}"/>`;
+    // Ruler under the bed: a tick every 50 cm, a label every meter.
+    for (let cm = 0; cm <= bedCm + 0.5; cm += 50) {
+      const tx = xAt(cm), major = cm % 100 === 0;
+      svg += `<line x1="${tx}" x2="${tx}" y1="${top + bedH + 2 * z}" y2="${top + bedH + (major ? 8 : 5) * z}" stroke="#9c7b55" stroke-width="${z}"/>`;
+      // Edge labels hang inward so they are not clipped (rtl: start = right edge, end = left edge).
+      const anchor = cm === 0 ? 'start' : cm + 100 > bedCm ? 'end' : 'middle';
+      if (major) svg += `<text x="${tx}" y="${top + bedH + 19 * z}" font-size="${10 * z}" text-anchor="${anchor}" fill="#6d6a60">${cm / 100} מ׳</text>`;
+    }
+  }
+
+  let labels = ''; // callout labels, drawn last so they sit on top of the lines
+  for (const s of segs) {
+    const top = bedTop[s.bed], color = s.c.color, inset = 2 * z;
+    const x = s.x, w = s.w;
+    svg += `<rect x="${x + inset}" y="${top + inset}" width="${Math.max(0, w - inset * 2)}" height="${bedH - inset * 2}" rx="${5 * z}" fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-width="${2 * z}"/>`;
+    svg += `<rect x="${x + inset}" y="${top + inset}" width="${Math.max(0, w - inset * 2)}" height="${stripH}" rx="${5 * z}" fill="${color}"/>`;
+    if (s.inside) {
+      svg += `<text x="${s.cx}" y="${top + inset + stripH / 2 + 4.5 * z}" font-size="${fs}" font-weight="bold" text-anchor="middle" fill="#fff">${s.inside}</text>`;
+    } else {
+      const ty = top - 6 * z - s.lane * laneH;
+      svg += `<line x1="${s.cx}" x2="${s.cx}" y1="${ty + 3 * z}" y2="${top + inset}" stroke="${color}" stroke-width="${1.5 * z}"/>`;
+      labels += `<text x="${s.tx}" y="${ty}" font-size="${fs}" font-weight="bold" text-anchor="${s.anchor}" fill="${color}" stroke="#fff" stroke-width="${4 * z}" paint-order="stroke">${s.callout}</text>`;
+    }
+
+    // Plants: one dot per plant position (rows across, columns every c.sp cm), or sowing lines for sown crops.
+    const areaTop = top + inset + stripH + 4 * z, areaH = bedH - inset * 2 - stripH - 8 * z;
+    const rows = s.c.rows, rowGap = areaH / rows;
+    const cols = Math.max(1, Math.round(s.len / s.c.sp));
+    for (let r = 0; r < rows; r++) {
+      const cy = areaTop + rowGap * (r + 0.5);
+      if (s.c.sow === 'drip') {
+        svg += `<line x1="${x + 8 * z}" x2="${x + w - 8 * z}" y1="${cy}" y2="${cy}" stroke="${color}" stroke-width="${3 * z}" stroke-linecap="round" stroke-dasharray="${0.1 * z} ${5 * z}"/>`;
+      } else {
+        const rad = Math.max(2, Math.min(6.5 * z, rowGap / 2.6, (w / cols) / 2.6));
+        for (let k = 0; k < cols; k++) {
+          svg += `<circle cx="${x + (k + 0.5) * (w / cols)}" cy="${cy}" r="${rad}" fill="${color}" stroke="#fff" stroke-width="${z}"/>`;
+        }
+      }
+    }
+  }
+  svg += labels + '</svg>';
+  $('drawing').innerHTML = svg + '<p class="muted" style="margin:6px 0 0">כל נקודה היא שתיל. בגזר ובצנונית הקווים המנוקדים הם שורות זריעה.</p>';
 }
 
 document.addEventListener('input', e => {
